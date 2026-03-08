@@ -1,0 +1,48 @@
+name: 构建 Windows 可执行文件
+
+# 触发条件：当你推送代码或创建新版本标签时自动构建
+on:
+  push:
+    branches: [ "main" ]        # 推送到 main 分支时构建
+    tags: [ "v*" ]               # 推送 v1.0、v2.1 这样的标签时构建
+  workflow_dispatch:             # 允许手动触发
+
+jobs:
+  build:
+    runs-on: windows-latest      # 使用 Windows 服务器环境 [citation:2][citation:7]
+
+    steps:
+      # 1. 检出你的代码
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      # 2. 设置 MSVC 编译环境（Visual Studio 的命令行工具）
+      - name: 设置 MSVC 环境
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # 3. 编译你的 C 代码
+      - name: 用 MSVC 编译
+        run: |
+          cl /nologo /O2 /EHsc /Fe:aliasTool.exe *.c
+        # 参数说明：
+        # /O2     优化（速度优先）
+        # /EHsc   启用 C++ 异常处理（C 程序可忽略）
+        # /Fe:    指定输出的 exe 文件名
+
+      # 4. 上传构建产物（作为 Action 的临时文件）
+      - name: 上传 exe 到 Action 页面
+        uses: actions/upload-artifact@v4
+        with:
+          name: aliasTool
+          path: aliasTool.exe
+          retention-days: 7      # 保留 7 天 [citation:6]
+
+      # 5. 如果是推送标签（发布新版本），则创建 Release 并附加 exe
+      - name: 创建 Release 并上传 exe
+        if: startsWith(github.ref, 'refs/tags/')  # 只有推送标签时才执行 [citation:9]
+        uses: softprops/action-gh-release@v1
+        with:
+          files: aliasTool.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
