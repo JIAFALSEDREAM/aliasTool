@@ -1,13 +1,10 @@
 name: 生成 Doxygen 文档
 
-# 触发条件：推送到 main 分支时
 on:
   push:
-    branches: [ "main" ]
-  # 允许手动触发
+    branches: ["main"]
   workflow_dispatch:
 
-# 设置 GitHub Pages 权限
 permissions:
   contents: read
   pages: write
@@ -17,31 +14,21 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1. 检出代码
-      - name: 检出仓库
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      # 2. 安装 Doxygen 和 Graphviz
       - name: 安装 Doxygen
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y doxygen graphviz
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
 
-      # 3. 生成文档
       - name: 运行 Doxygen
         run: doxygen Doxyfile
 
-      # 4. 准备 GitHub Pages
-      - name: 添加 .nojekyll 文件
+      - name: 添加 .nojekyll
         run: touch html/.nojekyll
 
-      # 5. 上传文档
       - name: 上传 Pages 制品
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: 'html'
+          path: "html"
 
-      # 6. 部署到 GitHub Pages
       - name: 部署到 GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
