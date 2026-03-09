@@ -16,8 +16,11 @@ jobs:
       - name: 设置 MSVC 环境
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: 编译资源文件
+        run: rc app.rc
+
       - name: 编译
-        run: cl /nologo /O2 /EHsc /Fe:aliasTool.exe *.c
+        run: cl /nologo /O2 /EHsc /Fe:aliasTool.exe *.c app.res
 
       - name: 上传 exe 到 Action 页面
         uses: actions/upload-artifact@v4
