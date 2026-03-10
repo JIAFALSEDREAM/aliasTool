@@ -2,8 +2,8 @@ name: 构建 Windows 可执行文件
 
 on:
   push:
-    branches: ["main"]
-    tags: ["v*"]
+    branches: [ "main" ]
+    tags: [ "v*" ]
   workflow_dispatch:
 
 jobs:

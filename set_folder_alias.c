@@ -24,14 +24,22 @@
  * @return 指向新分配的 ANSI 字符串的指针，使用后需要调用 free() 释放
  * @note 如果转换失败，返回的字符串可能为空或乱码，调用者需检查
  */
-char *Utf8ToAnsi(const char *utf8Str)
-{
+char *Utf8ToAnsi(const char *utf8Str) {
     int wideCharLen = MultiByteToWideChar(CP_UTF8, 0, utf8Str, -1, NULL, 0);
-    wchar_t *wideStr = (wchar_t *)malloc(wideCharLen * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, utf8Str, -1, wideStr, wideCharLen);
+    if (wideCharLen == 0) return NULL;
+    wchar_t *wideStr = (wchar_t *) malloc(wideCharLen * sizeof(wchar_t));
+    if (!wideStr) return NULL;
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8Str, -1, wideStr, wideCharLen) == 0) {
+        free(wideStr);
+        return NULL;
+    }
 
     int ansiLen = WideCharToMultiByte(CP_ACP, 0, wideStr, -1, NULL, 0, NULL, NULL);
-    char *ansiStr = (char *)malloc(ansiLen);
+    char *ansiStr = (char *) malloc(ansiLen);
+    if (!ansiStr) {
+        free(wideStr);
+        return NULL;
+    }
     WideCharToMultiByte(CP_ACP, 0, wideStr, -1, ansiStr, ansiLen, NULL, NULL);
 
     free(wideStr);
@@ -47,19 +55,16 @@ char *Utf8ToAnsi(const char *utf8Str)
  * @param inputStr 输入的 UTF-8 字符串
  * @return 转换后的字符串（可能为原字符串的拷贝或新分配的 ANSI 字符串），需要 free()
  */
-char *ConvertToAnsiIfNeeded(const char *inputStr)
-{
+char *ConvertToAnsiIfNeeded(const char *inputStr) {
     UINT acp = GetACP();
-    if (acp == CP_UTF8)
-    {
+    if (acp == CP_UTF8) {
         // 系统已经是 UTF-8，无需转换，直接复制
         size_t len = strlen(inputStr) + 1;
-        char *result = (char *)malloc(len);
+        char *result = (char *) malloc(len);
+        if (!result) return NULL;
         strcpy(result, inputStr);
         return result;
-    }
-    else
-    {
+    } else {
         // 系统是 ANSI（如 GBK），需要从 UTF-8 转换为 ANSI
         return Utf8ToAnsi(inputStr);
     }
@@ -86,16 +91,14 @@ char *ConvertToAnsiIfNeeded(const char *inputStr)
  *         - 3: 用户取消操作（不覆盖现有文件）
  *         - 4: 无法删除现有 desktop.ini 文件（权限不足）
  */
-int SetFolderDisplayName(const char *folderPath, const char *displayName)
-{
+int SetFolderDisplayName(const char *folderPath, const char *displayName) {
     char iniPath[MAX_PATH];
     char cmd[MAX_PATH * 2];
-    DWORD attrs;
+    char *ansiDisplayName = NULL;
 
     // --- 1. 检查目标文件夹是否存在且为目录 ---
-    attrs = GetFileAttributesA(folderPath);
-    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY))
-    {
+    DWORD attrs = GetFileAttributesA(folderPath);
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
         printf("错误：指定的路径不存在或不是一个文件夹。\n");
         return 1;
     }
@@ -104,8 +107,7 @@ int SetFolderDisplayName(const char *folderPath, const char *displayName)
     snprintf(iniPath, sizeof(iniPath), "%s\\desktop.ini", folderPath);
 
     // --- 3. 检查 desktop.ini 是否已存在，若存在则询问用户 ---
-    if (GetFileAttributesA(iniPath) != INVALID_FILE_ATTRIBUTES)
-    {
+    if (GetFileAttributesA(iniPath) != INVALID_FILE_ATTRIBUTES) {
         printf("警告：目标文件夹中已存在 desktop.ini 文件。\n");
         printf("请选择操作：\n");
         printf("1. 覆盖现有文件\n");
@@ -116,14 +118,12 @@ int SetFolderDisplayName(const char *folderPath, const char *displayName)
         scanf("%d", &choice);
         getchar();
 
-        if (choice != 1)
-        {
+        if (choice != 1) {
             printf("操作已取消。\n");
             return 3;
         }
 
-        if (!DeleteFileA(iniPath))
-        {
+        if (!DeleteFileA(iniPath)) {
             printf("错误：无法删除现有的 desktop.ini 文件。请检查权限。\n");
             return 4;
         }
@@ -131,12 +131,15 @@ int SetFolderDisplayName(const char *folderPath, const char *displayName)
     }
 
     // --- 4. 根据系统编码决定是否转换 displayName ---
-    char *ansiDisplayName = ConvertToAnsiIfNeeded(displayName);
+    ansiDisplayName = ConvertToAnsiIfNeeded(displayName);
+    if (!ansiDisplayName) {
+        printf("错误：内存分配失败。\n");
+        return 2;
+    }
 
     // --- 5. 创建并写入 desktop.ini 文件 ---
     FILE *f = fopen(iniPath, "w");
-    if (!f)
-    {
+    if (!f) {
         printf("错误：无法在目标文件夹中创建 desktop.ini 文件。请检查权限。\n");
         free(ansiDisplayName);
         return 2;
@@ -144,7 +147,9 @@ int SetFolderDisplayName(const char *folderPath, const char *displayName)
     fprintf(f, "[.ShellClassInfo]\n");
     fprintf(f, "LocalizedResourceName=%s\n", ansiDisplayName);
     fclose(f);
+
     free(ansiDisplayName);
+    ansiDisplayName = NULL;
 
     // --- 6. 设置 desktop.ini 文件属性：隐藏 + 系统 ---
     SetFileAttributesA(iniPath, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
@@ -166,10 +171,10 @@ int SetFolderDisplayName(const char *folderPath, const char *displayName)
  *
  * @return 程序退出码（始终返回 0）
  */
-int main()
-{
+int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+    SetConsoleTitleA("文件夹别名设置工具 - aliasTool");
 
     printf("当前系统 ANSI 代码页：%u\n", GetACP());
     printf("当前控制台输入代码页：%u\n", GetConsoleCP());
@@ -179,8 +184,7 @@ int main()
     char displayName[256];
     int continueFlag = 1;
 
-    while (continueFlag)
-    {
+    while (continueFlag) {
         printf("========================================\n");
         printf("  文件夹显示别名设置工具 (使用desktop.ini)\n");
         printf("  实际路径不变，仅更改资源管理器显示名\n");
@@ -196,26 +200,25 @@ int main()
 
         int result = SetFolderDisplayName(folderPath, displayName);
 
-        switch (result)
-        {
-        case 0:
-            printf("\n操作已完成！\n");
-            break;
-        case 1:
-            printf("\n错误：指定的路径不存在或不是一个文件夹。\n");
-            break;
-        case 2:
-            printf("\n错误：无法创建 desktop.ini 文件。请检查权限。\n");
-            break;
-        case 3:
-            printf("\n操作已取消。\n");
-            break;
-        case 4:
-            printf("\n错误：无法删除现有 desktop.ini 文件。请检查权限。\n");
-            break;
-        default:
-            printf("\n未知错误。\n");
-            break;
+        switch (result) {
+            case 0:
+                printf("\n操作已完成！\n");
+                break;
+            case 1:
+                printf("\n错误：指定的路径不存在或不是一个文件夹。\n");
+                break;
+            case 2:
+                printf("\n错误：无法创建 desktop.ini 文件。请检查权限。\n");
+                break;
+            case 3:
+                printf("\n操作已取消。\n");
+                break;
+            case 4:
+                printf("\n错误：无法删除现有 desktop.ini 文件。请检查权限。\n");
+                break;
+            default:
+                printf("\n未知错误。\n");
+                break;
         }
 
         // --- 询问是否继续 ---
@@ -224,8 +227,7 @@ int main()
         scanf(" %c", &choice);
         getchar();
 
-        if (choice != 'y' && choice != 'Y')
-        {
+        if (choice != 'y' && choice != 'Y') {
             continueFlag = 0;
         }
     }
