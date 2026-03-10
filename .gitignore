@@ -1,1 +1,7 @@
-.vscode
+/*
+!/.gitignore
+!/app.rc
+!/favicon.ico
+!/LICENSE
+!/readme.md
+!/set_folder_alias.c
